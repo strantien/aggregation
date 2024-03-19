@@ -7,13 +7,11 @@ import numpy as np
 from multiprocess import Pool
 
 from aggdiff.parameters import fgradW
-from aggdiff.solver import Solver
+from aggdiff.solver_evol import Solver
 from aggdiff.utils import wasserstein
 
 REPO_DIR = os.path.dirname(os.path.dirname((os.path.realpath(__file__))))
 TESTS_DIR = "tests/"
-
-XMIN, XMAX = -1, 1
 
 
 def compute_solution(J: float, solver: Solver, T: float):

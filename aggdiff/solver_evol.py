@@ -1,6 +1,5 @@
 """Simulation des solutions de l'équation d'agrégation-diffusion"""
 
-import os.path
 from typing import Callable
 
 import matplotlib.pyplot as plt
@@ -11,10 +10,8 @@ import scipy.sparse.linalg as scspl
 import seaborn as sns
 from scipy.sparse import diags
 
+# To do: pass rho0 as a parameter of Callable type
 from aggdiff.parameters import rho0
-
-REPO_DIR = os.path.dirname(os.path.dirname((os.path.realpath(__file__))))
-TESTS_DIR = "tests/"
 
 XMIN, XMAX = -1, 1
 
