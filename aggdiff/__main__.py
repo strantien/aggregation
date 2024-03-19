@@ -2,17 +2,22 @@ import argparse
 import logging
 import os.path
 import pathlib
-from multiprocessing import Pool
 
 import numpy as np
+from multiprocess import Pool
 
-from aggdiff.simulator import Solver
+from aggdiff.parameters import fgradW
+from aggdiff.solver import Solver
 from aggdiff.utils import wasserstein
 
 REPO_DIR = os.path.dirname(os.path.dirname((os.path.realpath(__file__))))
 TESTS_DIR = "tests/"
 
 XMIN, XMAX = -1, 1
+
+
+def compute_solution(J: float, solver: Solver, T: float):
+    return solver.compute_solution(J=J, T=T, plot=False)
 
 
 def main() -> None:
@@ -50,6 +55,20 @@ def main() -> None:
         help="convergence parameter when drawing convergence curves",
     )
     parser.add_argument("-eps", type=float, default=0.1, help="value for epsilon")
+    parser.add_argument("-alpha", type=float, default=1.0, help="value for alpha")
+    parser.add_argument("-x0", type=float, default=0.5, help="value for x0")
+    parser.add_argument(
+        "--xmin", type=float, default=-1.0, help="value for the left boundary"
+    )
+    parser.add_argument(
+        "--xmax", type=float, default=1.0, help="value for the right boundary"
+    )
+    parser.add_argument(
+        "--is-repulsive",
+        dest="is_repulsive",
+        action="store_true",
+        help="apply to a is_repulsive potential (mutliplies the potential by -1)",
+    )
     parser.add_argument(
         "--scheme",
         type=str,
@@ -93,15 +112,7 @@ def main() -> None:
     parser.add_argument(
         "-T", type=float, default=1.0, help="value for T, the final time"
     )
-    parser.add_argument("-alpha", type=float, default=1.0, help="value for alpha")
-    parser.add_argument("-x0", type=float, default=0.5, help="value for x0")
     parser.add_argument("-p", type=float, default=2.0, help="value for p")
-    parser.add_argument(
-        "--is-repulsive",
-        dest="is_repulsive",
-        action="store_true",
-        help="apply to a is_repulsive potential (mutliplies the potential by -1)",
-    )
     parser.add_argument(
         "-v",
         "--verbose",
@@ -133,19 +144,20 @@ def main() -> None:
     if args.run_simu:
         solver = Solver(
             eps=args.eps,
+            fgradW=lambda x: fgradW(x, args.alpha, args.x0),
+            is_repulsive=args.is_repulsive,
+            xmin=args.xmin,
+            xmax=args.xmax,
             scheme=args.scheme,
             theta=args.theta,
             nbC=args.nbC,
             c_rusanov=args.c_rusanov,
             BC=args.BC,
         )
-        solver.run_simulation(J=args.J, T=args.T, plot=args.with_plot)
+        solver.compute_solution(J=args.J, T=args.T, plot=args.with_plot)
 
     if args.run_cvg:
         if args.cvg_param_name == "dx":
-
-            xmin, xmax = XMIN, XMAX
-            L = xmax - xmin
             # Warning: in the previous simulation, "scheme" was always set to "upwind"
             savedir = os.path.join(
                 REPO_DIR,
@@ -162,40 +174,32 @@ def main() -> None:
                     exit()
             pathlib.Path(savedir).mkdir(parents=True, exist_ok=True)
             list_J = [100 * 2**i for i in range(7)]
+            list_args = [(J, args.T, False) for J in list_J]
             solver = Solver(
                 eps=args.eps,
+                fgradW=lambda x: fgradW(x, args.alpha, args.x0),
+                is_repulsive=args.is_repulsive,
+                xmin=args.xmin,
+                xmax=args.xmax,
                 scheme=args.scheme,
+                theta=args.theta,
                 nbC=args.nbC,
-                theta=args._get_args,
-                BC=args.BC,
-                c_rusanov=args.c_rusanov,
             )
             nproc = 2
             with Pool(nproc) as pool:
-                sols = pool.map(
-                    lambda J: solver.run_simulation(
-                        J=J,
-                        xmin=xmin,
-                        xmax=xmax,
-                        alpha=args.alpha,
-                        x0=args.x0,
-                        T=args.T,
-                        is_repulsive=args.is_repulsive,
-                        plot=False,
-                    ),
-                    list_J,
-                )
+                sols = pool.starmap(solver.compute_solution, list_args)
             logging.info(
                 "Computing errors and saving them in a two-columns file: dx and errors"
             )
             errs = np.empty((len(list_J) - 1, 2))
             np.savetxt(os.path.join(savedir, f"rho_J_{list_J[0]}"), sols[0][0])
+            L = args.xmax - args.xmin
             for i in range(1, len(list_J)):
                 np.savetxt(savedir + f"rho_J_{list_J[i]}", sols[i][0])
-                X1 = xmin + (np.arange(2 * list_J[i - 1] + 1) + 0.5) * L / (
+                X1 = args.xmin + (np.arange(2 * list_J[i - 1] + 1) + 0.5) * L / (
                     2 * list_J[i - 1] + 1
                 )
-                X2 = xmin + (np.arange(2 * list_J[i] + 1) + 0.5) * L / (
+                X2 = args.xmin + (np.arange(2 * list_J[i] + 1) + 0.5) * L / (
                     2 * list_J[i] + 1
                 )
                 errs[i - 1, 0] = L / (2 * list_J[i - 1] + 1)
@@ -204,9 +208,8 @@ def main() -> None:
             np.savetxt(os.path.join(savedir, "errors.log"), errs, header="dx")
 
         elif args.cvg_param_name == "eps":
-            xmin, xmax = XMIN, XMAX
-            L = xmax - xmin
-            X = xmin + (np.arange(2 * args.J + 1) + 0.5) * L / (2 * args.J + 1)
+            L = args.xmax - args.xmin
+            X = args.xmin + (np.arange(2 * args.J + 1) + 0.5) * L / (2 * args.J + 1)
             savedir = os.path.join(
                 REPO_DIR,
                 TESTS_DIR,
@@ -226,15 +229,17 @@ def main() -> None:
             with Pool(nproc) as pool:
                 sols = pool.map(
                     lambda eps: Solver(
-                        eps=eps, scheme=args.scheme, nbC=args.nbC
-                    ).run_simulation(
-                        J=args.J,
-                        xmin=xmin,
-                        xmax=xmax,
-                        alpha=args.alpha,
-                        x0=args.x0,
-                        T=args.T,
+                        eps=eps,
+                        fgradW=lambda x: fgradW(x, args.alpha, args.x0),
                         is_repulsive=args.is_repulsive,
+                        xmin=args.xmin,
+                        xmax=args.xmax,
+                        scheme=args.scheme,
+                        theta=args.theta,
+                        nbC=args.nbC,
+                    ).compute_solution(
+                        J=args.J,
+                        T=args.T,
                         plot=False,
                     ),
                     list_eps,
