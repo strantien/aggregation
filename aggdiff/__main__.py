@@ -14,10 +14,6 @@ REPO_DIR = os.path.dirname(os.path.dirname((os.path.realpath(__file__))))
 TESTS_DIR = "tests/"
 
 
-def compute_solution(J: float, solver: Solver, T: float):
-    return solver.compute_solution(J=J, T=T, plot=False)
-
-
 def main() -> None:
 
     parser = argparse.ArgumentParser(
@@ -243,7 +239,7 @@ def main() -> None:
                     list_eps,
                 )
             logging.info(
-                "Computing errors and saving them in a two-columns file: dx and errors"
+                "Computing errors and saving them in a two-columns file: eps and errors"
             )
             errs = np.empty((len(list_eps) - 1, 2))
             np.savetxt(os.path.join(savedir, f"rho_eps_{list_eps[0]}"), sols[0][0])
